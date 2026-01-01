@@ -25,7 +25,12 @@
       "mcp__zread__search_doc",
       "mcp__zread__read_file",
       "Bash(tee:*)",
-      "mcp__web-reader__webReader"
+      "mcp__web-reader__webReader",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "mcp__zread__get_repo_structure",
+      "Bash(git ls-tree:*)",
+      "Bash(pip install:*)"
     ]
   }
 }

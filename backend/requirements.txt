@@ -1,0 +1,22 @@
+# TradeX Backend Dependencies
+# Python 3.10+
+# Install with: uv pip install -r requirements.txt
+
+# ==================== Core Framework ====================
+fastapi==0.115.0          # Modern async web framework
+uvicorn[standard]==0.32.0 # ASGI server with websocket support
+
+# ==================== API Clients ====================
+websockets==13.1          # WebSocket client for InsightSentry
+requests==2.32.3          # HTTP client for REST API
+
+# ==================== Data Validation ====================
+pydantic==2.10.3          # Data validation and settings
+pydantic-settings==2.6.1  # Settings management from .env
+
+# ==================== Development (Optional) ====================
+# pytest==8.3.3           # Testing framework
+# pytest-asyncio==0.24.0 # Async support for pytest
+# httpx==0.28.1          # HTTP client for testing
+# ruff==0.8.4            # Fast Python linter
+# black==24.10.0         # Code formatter
