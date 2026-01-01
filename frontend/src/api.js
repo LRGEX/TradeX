@@ -51,6 +51,40 @@ export class BackendAPI {
   }
 
   /**
+   * Switch WebSocket subscription to a different symbol
+   * @param {string} symbol - Symbol to subscribe to (e.g., "BINANCE:BTCUSDT")
+   * @returns {Promise<Object>} Response with status, symbol, message, connected_clients
+   */
+  async subscribeSymbol(symbol) {
+    const params = new URLSearchParams({
+      symbol: symbol
+    });
+
+    const url = `${this.baseUrl}/api/subscribe?${params}`;
+
+    try {
+      console.log(`[API] Switching WebSocket to: ${symbol}`);
+
+      const response = await fetch(url, {
+        method: 'POST'
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      console.log(`[API] WebSocket switched to ${data.symbol}`);
+
+      return data;
+    } catch (error) {
+      console.error('[API] Subscribe error:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get timeframe statistics
    * @param {string} symbol - Trading symbol
    * @param {string} timeframe - Timeframe

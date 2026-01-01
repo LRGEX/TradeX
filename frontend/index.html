@@ -55,6 +55,7 @@
     }
 
     /* ==================== Controls ==================== */
+    .symbol-select,
     .timeframe-select,
     .symbol-input {
       padding: 8px 12px;
@@ -67,16 +68,23 @@
       transition: all 0.3s ease;
     }
 
+    .symbol-select {
+      min-width: 180px;
+      cursor: pointer;
+    }
+
     .timeframe-select {
       min-width: 120px;
       cursor: pointer;
     }
 
+    .symbol-select:hover,
     .timeframe-select:hover,
     .symbol-input:hover {
       border-color: #42a5f5;
     }
 
+    .symbol-select:focus,
     .timeframe-select:focus,
     .symbol-input:focus {
       border-color: #26a69a;
@@ -211,6 +219,7 @@
         flex-wrap: wrap;
       }
 
+      .symbol-select,
       .timeframe-select,
       .symbol-input {
         flex: 1;
@@ -236,6 +245,20 @@
     <header class="header">
       <h1 class="title">TradeX</h1>
       <div class="controls">
+        <select class="symbol-select" id="symbolSelect">
+          <option value="CME_MINI:MNQ1!">Micro Nasdaq 100</option>
+          <option value="CME_MINI:ES1!">Micro S&P 500</option>
+          <option value="CME_MINI:NQ1!">Nasdaq 100</option>
+          <option value="CME_MINI:YM1!">Micro Dow Jones</option>
+          <option value="CME_MINI:RTY1!">Micro Russell 2000</option>
+          <option value="BINANCE:BTCUSDT">Bitcoin</option>
+          <option value="BINANCE:ETHUSDT">Ethereum</option>
+          <option value="CME:GC1!">Gold Futures</option>
+          <option value="CME:CL1!">Crude Oil</option>
+          <option value="NYSE:AMD">AMD</option>
+          <option value="NASDAQ:TSLA">Tesla</option>
+          <option value="NASDAQ:AAPL">Apple</option>
+        </select>
         <select class="timeframe-select" id="timeframeSelect">
           <option value="1m">1m</option>
           <option value="5m">5m</option>
@@ -252,7 +275,7 @@
           class="symbol-input"
           id="symbolInput"
           value="CME_MINI:MNQ1!"
-          placeholder="Symbol"
+          placeholder="Or type custom symbol..."
         />
         <div class="status-indicator">
           <div class="status-dot" id="statusDot"></div>

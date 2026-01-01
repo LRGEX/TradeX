@@ -103,13 +103,14 @@ class InsightSentryWebSocketClient:
                 self.is_connected = False
                 break
 
-    async def _subscribe(self) -> None:
+    async def _subscribe(self, symbol: str = None) -> None:
         """Send subscription message to WebSocket."""
+        target_symbol = symbol or self.symbol
         subscription = {
             "api_key": self.api_key,
             "subscriptions": [
                 {
-                    "code": self.symbol,
+                    "code": target_symbol,
                     "type": "series",
                     "bar_type": "minute",
                     "bar_interval": 1
@@ -118,7 +119,25 @@ class InsightSentryWebSocketClient:
         }
 
         await self.websocket.send(json.dumps(subscription))
-        logger.info(f"Sent subscription for {self.symbol}")
+        logger.info(f"Sent subscription for {target_symbol}")
+
+    async def _unsubscribe(self, symbol: str) -> None:
+        """Send unsubscribe message to WebSocket."""
+        unsubscription = {
+            "api_key": self.api_key,
+            "action": "unsubscribe",
+            "subscriptions": [
+                {
+                    "code": symbol,
+                    "type": "series",
+                    "bar_type": "minute",
+                    "bar_interval": 1
+                }
+            ]
+        }
+
+        await self.websocket.send(json.dumps(unsubscription))
+        logger.info(f"Sent unsubscription for {symbol}")
 
     async def _message_loop(self) -> None:
         """
@@ -209,6 +228,42 @@ class InsightSentryWebSocketClient:
             await self.websocket.close()
             self.is_connected = False
             logger.info("WebSocket connection closed")
+
+    async def switch_symbol(self, new_symbol: str) -> None:
+        """
+        Switch WebSocket subscription to a different symbol.
+
+        Unsubscribes from current symbol and subscribes to new symbol.
+        Resets aggregator to start fresh data for new symbol.
+
+        Args:
+            new_symbol: New symbol to subscribe to
+        """
+        if not self.is_connected or not self.websocket:
+            logger.error("Cannot switch symbol: WebSocket not connected")
+            raise RuntimeError("WebSocket not connected")
+
+        if new_symbol == self.symbol:
+            logger.info(f"Already subscribed to {new_symbol}, skipping switch")
+            return
+
+        logger.info(f"Switching symbol from {self.symbol} to {new_symbol}")
+
+        # Unsubscribe from old symbol
+        await self._unsubscribe(self.symbol)
+
+        # Update current symbol
+        old_symbol = self.symbol
+        self.symbol = new_symbol
+
+        # Subscribe to new symbol
+        await self._subscribe(new_symbol)
+
+        # Reset aggregator for new symbol
+        self.aggregator = TimeframeAggregator()
+        logger.info(f"Aggregator reset for {new_symbol}")
+
+        logger.info(f"Successfully switched from {old_symbol} to {new_symbol}")
 
     def set_bar_update_callback(self, callback: Callable[[str, list[OHLCV]], None]) -> None:
         """

@@ -19,6 +19,7 @@ export class WebSocketClient {
     this.reconnectDelay = 1000; // Start with 1 second
     this.onBarUpdate = null;
     this.onConnectionChange = null;
+    this.onSymbolChange = null;
   }
 
   /**
@@ -92,6 +93,16 @@ export class WebSocketClient {
         return;
       }
 
+      // Handle symbol changed message
+      if (message.type === 'symbol_changed') {
+        console.log(`[WS] Symbol changed to: ${message.symbol}`);
+        // Notify callback
+        if (this.onSymbolChange) {
+          this.onSymbolChange(message.symbol);
+        }
+        return;
+      }
+
       // Handle bar update message
       if (message.type === 'bar_update') {
         console.log(`[WS] Bar update: ${message.timeframe} (${message.bars.length} bars)`);
@@ -152,6 +163,14 @@ export class WebSocketClient {
    */
   setOnConnectionChange(callback) {
     this.onConnectionChange = callback;
+  }
+
+  /**
+   * Set callback for symbol changes
+   * @param {Function} callback - Callback function (symbol) => void
+   */
+  setOnSymbolChange(callback) {
+    this.onSymbolChange = callback;
   }
 
   /**

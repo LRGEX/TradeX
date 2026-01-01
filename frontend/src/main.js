@@ -20,6 +20,7 @@ class TradeXApp {
 
     // UI elements
     this.elements = {
+      symbolSelect: document.getElementById('symbolSelect'),
       timeframeSelect: document.getElementById('timeframeSelect'),
       symbolInput: document.getElementById('symbolInput'),
       statusDot: document.getElementById('statusDot'),
@@ -75,6 +76,17 @@ class TradeXApp {
    * Setup event listeners
    */
   setupEventListeners() {
+    // Symbol dropdown change
+    this.elements.symbolSelect.addEventListener('change', async (e) => {
+      const newSymbol = e.target.value;
+      if (newSymbol && newSymbol !== this.currentSymbol) {
+        this.currentSymbol = newSymbol;
+        this.elements.symbolInput.value = newSymbol; // Sync input field
+        console.log(`[App] Symbol changed to: ${this.currentSymbol}`);
+        await this.loadChartData();
+      }
+    });
+
     // Timeframe change
     this.elements.timeframeSelect.addEventListener('change', async (e) => {
       this.currentTimeframe = e.target.value;
@@ -129,6 +141,17 @@ class TradeXApp {
    */
   async loadChartData() {
     try {
+      this.showLoading('Switching symbol...');
+
+      // Switch WebSocket subscription to new symbol
+      try {
+        await api.subscribeSymbol(this.currentSymbol);
+        console.log(`[App] WebSocket switched to ${this.currentSymbol}`);
+      } catch (wsError) {
+        console.warn('[App] WebSocket switch failed, continuing with data fetch:', wsError);
+        // Don't fail the whole operation if WebSocket switch fails
+      }
+
       this.showLoading('Loading chart data...');
 
       const data = await api.fetchChartHistory(

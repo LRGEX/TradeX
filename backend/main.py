@@ -263,6 +263,67 @@ async def get_timeframe_stats(
     )
 
 
+@app.post("/api/subscribe")
+async def subscribe_symbol(
+    symbol: str = Query(..., description="Symbol to subscribe to (e.g., BINANCE:BTCUSDT)")
+):
+    """
+    Switch WebSocket subscription to a different symbol.
+
+    This endpoint:
+    - Unsubscribes from the current symbol
+    - Subscribes to the new symbol
+    - Resets the aggregator
+    - Notifies all connected frontend clients
+
+    Keeps a single WebSocket connection (respects API limits).
+    """
+    logger.info(f"Received subscription request for {symbol}")
+
+    if not ws_client:
+        raise HTTPException(status_code=503, detail="WebSocket client not initialized")
+
+    if not ws_client.is_connected:
+        raise HTTPException(status_code=503, detail="WebSocket not connected")
+
+    try:
+        # Switch symbol
+        await ws_client.switch_symbol(symbol)
+
+        # Notify all connected frontend clients
+        notification = {
+            "type": "symbol_changed",
+            "symbol": symbol,
+            "message": f"Switched to {symbol}"
+        }
+
+        disconnected_clients = set()
+        for client in frontend_clients:
+            try:
+                await client.send_json(notification)
+            except Exception as e:
+                logger.error(f"Error sending notification to client: {e}")
+                disconnected_clients.add(client)
+
+        frontend_clients.difference_update(disconnected_clients)
+
+        logger.info(f"Notified {len(frontend_clients)} clients of symbol change")
+
+        return {
+            "status": "success",
+            "symbol": symbol,
+            "message": f"Successfully switched to {symbol}",
+            "connected_clients": len(frontend_clients)
+        }
+
+    except RuntimeError as e:
+        logger.error(f"Failed to switch symbol: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error switching symbol: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== WebSocket Endpoint ====================
 
 @app.websocket("/ws/chart")
