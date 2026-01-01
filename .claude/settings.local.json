@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Bash(npm create vite:*)",
+      "Bash(npm install:*)",
+      "Bash(uv pip install:*)",
+      "Bash(uv venv:*)",
+      "Bash(source:*)",
+      "Bash(git add:*)",
+      "Bash(python:*)",
+      "Bash(npm run dev)",
+      "Bash(tasklist:*)",
+      "Bash(taskkill:*)",
+      "Bash(timeout:*)",
+      "Bash(uv run:*)",
+      "Bash(start /B uv run python:*)",
+      "Bash(curl:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(cat:*)",
+      "Bash(powershell:*)",
+      "Bash(npm info:*)",
+      "Bash(dir:*)",
+      "mcp__zread__search_doc",
+      "mcp__zread__read_file",
+      "Bash(tee:*)",
+      "mcp__web-reader__webReader"
+    ]
+  }
+}

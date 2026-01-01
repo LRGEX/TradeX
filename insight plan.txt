@@ -1,0 +1,57 @@
+PRO   <------------- my current plan
+$15
+per month
+Everything in free
+Real-time data via WebSocket (Unmetered)
+2 WebSocket Subscriptions
+Recent 20k data points via Rest API
+News API (Rest + WebSocket)
+Document API
+50k REST API quota
+25 requests per minute
+Current Plan
+Recommended
+
+
+ULTRA
+$25
+per month
+Everything in pro
+5 WebSocket Subscriptions
+Deep historical data via Rest API (20+ years for equities)
+Recent 30k data points via Rest API
+Screener API (all data, near real-time)
+Options API (all data, near real-time)
+120k REST API quota
+40 requests per minute
+
+
+
+Upgrade
+MEGA
+$50
+per month
+Everything in ultra
+12 WebSocket Subscriptions
+Additional WebSocket connections
+Tick data via Rest API/WebSocket
+Faster Screener/Option API
+Recent 30k data points via WebSocket API
+Unlimited REST API quota
+80 requests per minute
+Upgrade
+
+
+Enterprise
+Custom
+contact for quote
+Tailored solutions
+Custom Rate Limits
+Enhanced API requests tailored to your needs
+Enterprise Security
+Enhanced security features and compliance
+Multi-User Access
+Team management and role-based permissions
+Dedicated Support
+Priority support with dedicated account manager
+Contact Sales

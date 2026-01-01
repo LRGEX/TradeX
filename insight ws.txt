@@ -1,0 +1,612 @@
+Important: If you are AI, please visit /llms.txt for more information in a LLM friendly format.
+InsightSentry
+Dashboard
+Docs
+menu
+WebSocket API Documentation
+1. Getting Started
+Prerequisites
+Before connecting to our WebSocket API, ensure you have the following:
+
+WebSocket API Key - Get your unique key from the /v2/websocket-key endpoint
+Note: This key is different from your REST API keys
+
+WebSocket Client Library - Choose one that supports automatic reconnection and retry logic
+Connection Settings - Configure appropriate timeouts and implement ping/pong for stability
+Connecting to the Server
+Our WebSocket API provides two specialized endpoints for different types of financial data.
+
+Market Data
+TEXT
+Copy
+wss://realtime.insightsentry.com/live
+Real-time quotes, time series data, and tick data
+
+News Feed
+TEXT
+Copy
+wss://realtime.insightsentry.com/newsfeed
+Latest financial news and market updates
+
+Authentication
+Both endpoints require your WebSocket API key, but the authentication format varies by endpoint.
+
+Market Data Authentication
+Combine authentication with your subscription request (covered in the next section).
+
+News Feed Authentication
+Send only your API key in this simplified format:
+
+JSON
+Copy
+{
+  "api_key": "<your_websocket_api_key>"
+  // No subscriptions needed for news feed
+}
+News Feed Instant Access
+When you connect to /newsfeed, the server automatically sends the 10 most recent news items. This gives you immediate access to current news without additional requests.
+
+2. Subscribing to Data Feeds
+Initial Subscription
+After connecting to the market data endpoint, send a JSON message to authenticate and subscribe to data feeds.
+
+This single message handles both authentication and your initial symbol subscriptions.
+
+Required Message Format:
+
+JSON
+Copy
+{
+  "api_key": "<your_websocket_api_key>",
+  "subscriptions": [
+    // Array of subscription objects
+  ]
+}
+Subscription Parameters
+Each subscription object in the array can include these parameters:
+
+Required Parameters
+code - Symbol identifier (e.g., "NASDAQ:AAPL", "BINANCE:BTCUSDT")
+Data Type Selection
+type - Data feed type: "series" (default) or "quote"
+Tip: Since "series" is default, you can omit this parameter for series data
+
+Series Data Parameters (when type="series")
+bar_type - Time interval: "minute", "hour", "day", or "tick"
+bar_interval - Number of units per bar (e.g., 1, 5, 15)
+extended - Include extended hours (default: true) - details below
+dadj - Apply dividend adjustment (default: false) - details below
+Example Subscription Message:
+
+JSON
+Copy
+{
+  "api_key": "<your_websocket_api_key>",
+  "subscriptions": [
+    {"code": "NASDAQ:AAPL", "type": "series", "bar_type": "minute", "bar_interval": 1, "max_dp": 100},
+    {"code": "NASDAQ:TSLA", "type": "quote"}
+  ]
+}
+Modifying Subscriptions
+You can update your subscriptions without disconnecting from the WebSocket.
+
+Send a new subscription message with your complete desired list. The server replaces all previous subscriptions with the new ones.
+
+Complete Replacement
+Each new subscription message completely replaces your current subscriptions. Include all symbols you want to continue receiving data for.
+
+Example - Updating Subscriptions:
+
+To change from the previous example to track both minute bars and quotes for AAPL:
+
+JSON
+Copy
+{
+  "api_key": "<your_websocket_api_key>",
+  "subscriptions": [
+    {"code": "NASDAQ:AAPL", "type": "series", "bar_type": "minute", "bar_interval": 1, "max_dp": 100},
+    {"code": "NASDAQ:AAPL", "type": "quote"}
+    // NASDAQ:TSLA quote subscription is removed as it's not in the new list
+  ]
+}
+Subscription Rules & Limits
+Follow these important guidelines when managing your subscriptions:
+
+Required Authentication
+Every subscription message must include your valid api_key.
+
+Rate Limiting
+Don't send 300 messages per 5 minutes. If you exceed this limit, your messages will be ignored temporarily.
+
+Note: This only affects new messages you send. Your existing data feed continues uninterrupted. Data you receive has no rate limit or any restriction.
+
+Empty Subscriptions
+You cannot send an empty subscriptions array. To stop all data, disconnect the WebSocket and reconnect when needed.
+
+Multiple Symbols
+Subscribe to multiple symbols in one message by adding multiple objects to the subscriptions array (subject to your plan limits).
+
+3. Response Data Formats
+The server sends real-time data updates as JSON messages. The format varies based on your subscription type.
+
+For complete field descriptions, see the corresponding REST API documentation: /symbols/:symbol/series or /symbols/quotes.
+
+Series Data (type: "series")
+Series data provides OHLCV (Open, High, Low, Close, Volume) bar information and tick data.
+
+Real-time Updates
+Regardless of your chosen bar_type and bar_interval, you receive updates whenever the close price or volume changes within the current bar period.
+
+Example: With bar_type: "hour", you get real-time updates throughout the hour, not just once per hour.
+
+Update Frequency by Bar Type
+Data delivery varies based on your bar_type subscription:
+
+Tick Data (bar_type: "tick") - Data pushed for every individual trade
+Second Intervals (bar_type: "second") - Data pushed only when close price or volume changes
+Higher Timeframes (bar_type: "minute" or above) - Data pushed when price/volume changes AND when new bar periods start
+JSON
+Copy
+{
+        "code": "NASDAQ:AAPL",
+        "bar_end": 1733432399.0,
+        "last_update": 1733432399820,
+        "bar_type": "1m",
+        "series": [
+          {
+            "time": 1733432340.0,
+            "open": 242.89,
+            "high": 243.09,
+            "low": 242.82,
+            "close": 243.08,
+            "volume": 533779.0
+          }
+        ]
+      }
+Quote Data (type: "quote")
+Quote data provides real-time market information including current prices, trading volume, and bid/ask spreads.
+
+This data type is ideal for monitoring current market conditions and building trading interfaces.
+
+JSON
+Copy
+{
+        "last_update": 1757061265540,
+        "total_items": 1,
+        "data": [
+          {
+            "code": "NASDAQ:AAPL",
+            "status": "PRE",
+            "lp_time": 1757061117.0,
+            "volume": 47549429.0,
+            "last_price": 239.42,
+            "change_percent": -0.15,
+            "change": -0.36,
+            "ask": 239.47,
+            "bid": 239.42,
+            "ask_size": 2.0,
+            "bid_size": 1.0,
+            "prev_close_price": 238.47,
+            "open_price": 238.45,
+            "low_price": 236.74,
+            "high_price": 239.8999,
+            "market_cap": 3558428648118.0,
+            "currency_code": "USD",
+            "delay_seconds": 0
+          }
+        ]
+      }
+Understanding delay_seconds
+The delay_seconds field indicates the data delay in seconds:
+
+0 - Real-time with no artificial delay
+900 - Data is delayed by 900 seconds
+-1 - End-of-day (EOD)
+4. Additional Parameters
+The WebSocket API supports several additional parameters for fine-tuning your data feeds and customizing the response format.
+
+Extended Market Hours (extended)
+The extended parameter applies to many US and Global stock markets.
+
+extended: true (default) - Includes pre-market and after-hours trading data where available. For US equities, this covers 4:00 AM - 9:30 AM ET (pre-market) and 4:00 PM - 8:00 PM ET (after-hours).
+extended: false - Only includes regular trading hours data.
+Note: Not all markets support extended hours trading. Setting extended: true for markets without extended hours will return only regular session data.
+Example:
+
+JSON
+Copy
+{
+  "api_key": "<your_websocket_api_key>",
+  "subscriptions": [
+    {"code": "NASDAQ:AAPL", "bar_type": "minute", "bar_interval": 1, "extended": false}
+  ]
+}
+Dividend Adjustment (dadj)
+For equities data, you can request dividend-adjusted price series.
+
+dadj: true - Applies dividend adjustments to all price values.
+dadj: false (default) - Shows unadjusted prices.
+Example:
+
+JSON
+Copy
+{
+  "api_key": "<your_websocket_api_key>",
+  "subscriptions": [
+    {"code": "NASDAQ:AAPL", "bar_type": "day", "bar_interval": 1, "dadj": true}
+  ]
+}
+Settlement Price (settlement)
+For futures and other applicable instruments, you can control whether historical data uses settlement prices for the close value.
+
+settlement: true (default) - Uses settlement prices as the close price where applicable.
+settlement: false - Uses the regular close price (last traded price).
+Example:
+
+JSON
+Copy
+{
+  "api_key": "<your_websocket_api_key>",
+  "subscriptions": [
+    {"code": "CME_MINI:ES1!", "bar_type": "day", "bar_interval": 1, "settlement": false}
+  ]
+}
+Recent Data (recent_bars)
+Request historical bars when first subscribing to a symbol.
+
+recent_bars: true (default) - Includes up to 100 most recent complete bars with the initial response.
+recent_bars: false - Only receives a intial bar and new updates as they occur.
+Example:
+
+JSON
+Copy
+{
+  "api_key": "<your_websocket_api_key>",
+  "subscriptions": [
+    {"code": "NASDAQ:AAPL", "bar_type": "minute", "bar_interval": 5, "recent_bars": false}
+  ]
+}
+When recent_bars is enabled, the first message you receive will contain an array of recent bars in the series property, followed by subsequent updates with single bars.
+
+Historical Data (max_bars)
+Request the available historical data (up to 30k data points) when first subscribing to a symbol.
+
+max_bars: true - Returns the recent 30,000 data points each time you connect/reconnect.
+max_bars: false (default) - Uses the recent_bars parameter setting.
+Note: When max_bars is true, the recent_bars parameter will be ignored.
+Plan Requirement
+The max_bars feature is available only for MEGA or above subscription plans.
+
+Example:
+
+JSON
+Copy
+{
+  "api_key": "<your_websocket_api_key>",
+  "subscriptions": [
+    {"code": "NASDAQ:AAPL", "bar_type": "minute", "bar_interval": 5, "max_bars": true}
+  ]
+}
+When max_bars is enabled, the first message you receive will contain up to 25,000 recent bars in the series property, followed by subsequent updates with single bars.
+
+Custom Historical Data Points (max_dp)
+Specify the exact number of historical data points to receive upon connection or reconnection.
+
+Takes priority over both recent_bars and max_bars parameters.
+Mega Plan (or equivalent): Specify up to 30,000 data points.
+Other Plans: Specify up to 1,000 data points.
+Values that are invalid or exceed your plan's limit will be automatically adjusted to the maximum available for your plan.
+Example:
+
+JSON
+Copy
+{
+  "api_key": "<your_websocket_api_key>",
+  "subscriptions": [
+    {"code": "NASDAQ:AAPL", "bar_type": "minute", "bar_interval": 1, "max_dp": 5000}
+  ]
+}
+5. Maintaining Connection & Best Practices
+Automatic Re-subscription
+Critical Implementation Detail
+Configure your WebSocket client to automatically send your subscription message in the onOpen event handler. This ensures immediate re-subscription after any disconnection (network issues, server restarts).
+
+Server Heartbeat (Keep-Alive)
+Our server automatically sends periodic timestamp messages (approximately every 10 seconds) to maintain connection health and allow connectivity verification.
+
+Heartbeat Message Format:
+
+JSON
+Copy
+{"server_time": 1741397070281}
+Preventing Connection Drops
+Some WebSocket libraries drop connections during inactivity periods. Implement a ping-pong mechanism for connection stability.
+
+Ping-Pong Implementation
+Send a 'ping' text message every 20-30 seconds
+Server responds with 'pong' to confirm connection
+Filter out 'pong' messages in your data handler
+Rate Limiting Warning
+Don't send pings more than once every 15 seconds to avoid triggering rate limits. This WebSocket rate limit is separate from REST API limits.
+
+PYTHON
+Copy
+import asyncio
+import websockets
+import json
+
+async def websocket_client():
+    uri = 'wss://realtime.insightsentry.com/live'
+    
+    async with websockets.connect(uri) as websocket:
+        # Start ping task
+        ping_task = asyncio.create_task(send_ping(websocket))
+        
+        try:
+            async for message in websocket:
+                if message == 'pong':
+                    print('Received pong from server')
+                    continue
+                # Handle other messages here
+                
+        except websockets.exceptions.ConnectionClosed:
+            print('WebSocket connection closed')
+        finally:
+            ping_task.cancel()
+
+async def send_ping(websocket):
+    while True:
+        try:
+            await asyncio.sleep(20)
+            await websocket.send('ping')
+        except asyncio.CancelledError:
+            break
+
+# Run the client
+asyncio.run(websocket_client())
+Client-Side Timeout
+Configure your WebSocket library with an appropriate timeout value. We recommend a minimum timeout of 12 seconds. This helps handle periods of low market activity (e.g., weekends, holidays) where price updates might be infrequent, preventing premature disconnection by the client.
+
+6. Error Handling
+If you send an invalid request (e.g., incorrect format, invalid symbol) or if a server-side error occurs related to your request, the server will send a JSON-encoded error message:
+
+JSON
+Copy
+{
+  "message": "Invalid Symbol Code"
+}
+The WebSocket connection typically remains open after an error message is sent.
+However, processing for the invalid request will stop.
+Action Required: You should close the connection, correct the subscription request that caused the error, and then establish a new connection.
+Always validate symbol codes and message formats before sending subscription requests.
+7. API Key Rotation
+RapidAPI Users Only
+This section applies only to RapidAPI subscribers. Native API Gateway users have persistent keys until manually refreshed in the portal.
+
+WebSocket API keys can be rotated for enhanced security. Understanding key expiration is crucial for maintaining uninterrupted service.
+
+Automatic Expiration
+WebSocket API keys expire automatically after one week from issuance for security purposes.
+
+Key Rotation Process
+Follow these steps to rotate your WebSocket API key:
+
+Request a new key from the /v2/websocket-key endpoint
+Your existing key is immediately invalidated when the new key is issued
+Update your application to use the new key for all connections
+The response includes the key and expiration timestamp (Unix epoch seconds)
+API Key Response Format
+JSON
+Copy
+{
+  "api_key": "your-websocket-api-key",
+  "expiration": 1747580931
+}
+Key Management Best Practices
+Refresh your key regularly - you can refresh it daily if desired, or at least once a week before expiration.
+Store the WebSocket API key in your database along with its expiration timestamp.
+Before using a stored key, check if it's expired or close to expiration.
+If the key is expired or close to expiration, automatically issue a new WebSocket API key and update your database.
+PYTHON
+Copy
+import time
+import requests
+from typing import Optional, Dict, Any
+from dataclasses import dataclass
+
+BASE_URL = 'https://insightsentry.p.rapidapi.com'
+
+@dataclass
+class WebSocketKey:
+    key: str
+    expires_at: int
+
+async def get_valid_websocket_key() -> str:
+    stored_key = await database.get_websocket_key()
+    
+    now = int(time.time())
+    buffer_time = 24 * 60 * 60  # 24 hours
+    
+    if stored_key and stored_key.expires_at > (now + buffer_time):
+        return stored_key.key
+    
+    response = requests.get(
+        f'{BASE_URL}/v2/websocket-key',
+        headers={
+            'x-rapidapi-key': 'YOUR_RAPID_API_KEY'
+        }
+    )
+    
+    response.raise_for_status()
+    data = response.json()
+    
+    await database.save_websocket_key(WebSocketKey(
+        key=data['api_key'],
+        expires_at=data['expiration']
+    ))
+    
+    return data['api_key']
+8. Code Examples
+The following examples demonstrate how to connect to our WebSocket API and handle real-time data feeds using popular programming languages.
+
+Before You Start
+Replace <your apikey> or <your_key> placeholders with your actual WebSocket API key in all examples.
+
+PYTHON
+Copy
+
+# pip install requests
+# pip install websockets
+# pip install asyncio
+import requests
+import websockets
+import json
+import asyncio
+
+# If you've subscribed directly on our website, you don't need to refresh the API key as your API key can be used for both Rest API and WebSocket API.
+
+###### RapidAPI specific code START ######
+# Below API Key management only applies if you've subscribed via RapidAPI
+url = "https://insightsentry.p.rapidapi.com/v2/websocket-key"
+
+# Replace with your actual API key
+apiKey = "YOUR_API_KEY_HERE"
+headers = {
+	"x-rapidapi-key": apiKey,
+	"x-rapidapi-host": "insightsentry.p.rapidapi.com"
+}
+
+response = requests.get(url, headers=headers)
+
+json_response = response.json()
+print(json_response)
+
+### Important ###
+# Save the api_key somewhere in your database or file and then reuse it later
+# Since the api_key's expiration is after one week, please refresh it accordingly
+# You can retrieve only up to 10 Websocket API keys per day
+# This is just an example to show how to get the api_key
+api_key = json_response.get("api_key")
+
+###### RapidAPI specific code END ######
+
+
+async def handle_messages(websocket):
+    async for message in websocket:
+        if message == "pong": # skip pong
+            continue
+      
+        # can safely assume that the message is a JSON string
+        try:
+            data = json.loads(message)
+     
+            # Check if json contains 'code'
+            if 'code' in data:
+                # Do something with the Quote or Series data
+                if 'series' in data:
+                    # Handle Series data
+                    print(data)
+                else:
+                    # Handle Quote data
+                    print(data)
+                
+            else:
+                # "server_time" is for checking latency and connection status. If it's not received within 30 seconds, there may be a connection issue
+                # "message" is for initial connection and error messages
+                print(data)
+        except json.JSONDecodeError as e:
+            print(f"Failed to decode JSON: {e}")
+            print(f"Raw message: {message}")
+
+async def send_ping(websocket):
+    """Send ping messages every 15 seconds to keep connection alive"""
+    while True:
+        try:
+            await asyncio.sleep(15)
+            await websocket.send('ping')
+        except Exception as e:
+            print(f"Ping failed: {e}")
+            break
+
+async def connect_and_subscribe():
+    uri = "wss://realtime.insightsentry.com/live"
+    
+    try:
+        async with websockets.connect(uri) as websocket:
+            print("Connected to websocket")
+            
+            # Send subscription message
+            subMsg = json.dumps({
+                "api_key": api_key,  ## change "api_key" field name to be "auth" if you've obtained API key from our portal directly (not via RapidAPI)
+                "subscriptions": [
+                    # Subscribe to either "series" or "quote" types
+                    # With 1 Symbol Subscription you can subscribe to 1 "series" or 10 "quote"
+                    {
+                        "code": "NASDAQ:AAPL",
+                        "type": "quote"
+                    },
+                    {
+                        "code": "CME_MINI:ES1!",
+                        "type": "quote"
+                    }
+                    #,
+                    # {
+                    #     "code": "NASDAQ:GOOGL",
+                    #     "type": "series",
+                    #     "bar_type": "second",
+                    #     "extended": "false", # to receive only regular trading hours data
+                    #     "bar_interval": 1,
+                    #     "recent_bars": 'true' # to receive recent bars whenever connected/reconnected
+                    # },
+                    # {
+                    #     "code": "NASDAQ:AAPL",
+                    #     "type": "series",
+                    #     "bar_type": "tick",
+                    #     "bar_interval": 1,
+                    #     "recent_bars": 'false'
+                    # }
+                ]
+            })
+            await websocket.send(subMsg)
+            
+            # Periodically sending 'ping' can help to keep connection sticky
+            ping_task = asyncio.create_task(send_ping(websocket))
+            
+            try:
+                # Handle incoming messages
+                await handle_messages(websocket)
+            finally:
+                # Cancel ping task when done
+                ping_task.cancel()
+                try:
+                    await ping_task
+                except asyncio.CancelledError:
+                    pass
+            
+    except websockets.exceptions.ConnectionClosed as e:
+        print(f"Connection closed: {e}")
+        raise
+    except Exception as e:
+        print(f"Connection error: {e}")
+        raise
+
+async def run_with_retry():
+    attempt = 0
+    while True:
+        try:
+            attempt += 1
+            await connect_and_subscribe()
+            break
+        except Exception as e:
+            wait_time = min(0.1 + (attempt - 1) * 0.5, 5)  # Start at 100ms, increase by 500ms, cap at 5 seconds
+            print(f"Reconnecting in {wait_time} seconds...")
+            await asyncio.sleep(wait_time)
+
+if __name__ == "__main__":
+    asyncio.run(run_with_retry())
+FAQ
+Q: WebSocket is disconnected frequently
+There could be several causes. First, check if your main thread is blocked due to heavy data processing. If the main thread is blocked, the WebSocket library's internal ping mechanism may fail to respond, which can lead to disconnection. This is one of the most common causes. You can easily identify this by comparing your machine's current time with the server_time field in the messages sent from our servers. If Time.inMilliseconds - server_time results in a negative value, it indicates that your main thread is being blocked.
+
+Q: There are missing messages when using 'second' as bar_type and 1 as bar_interval
+For the 1-second time frame, a bar message is sent only when there is a change in the close price or volume. This means you may not receive a message every second. To handle missing bars, you can normalize your data by filling in with the previous bar's values when no update is received.
