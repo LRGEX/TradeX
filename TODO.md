@@ -4,7 +4,7 @@
 
 ## Tasks
 
-- [ ] Add your tasks here
+- [ ] Change the frontend from Vanilla JavaScript to React, tailwind, shadcn
 
 ---
 
