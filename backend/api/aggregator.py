@@ -56,23 +56,33 @@ class TimeframeAggregator:
     }
 
     def __init__(self):
-        """Initialize aggregator with rolling buffers for each timeframe"""
-        # Store 1m bars for all timeframes (buffer size varies)
-        self._buffers: Dict[str, deque] = {
-            "5m": deque(maxlen=5),
-            "15m": deque(maxlen=15),
-            "30m": deque(maxlen=30),
-            "1H": deque(maxlen=60),
-            "4H": deque(maxlen=240),
-            "1D": deque(maxlen=1440),
-            "1W": deque(maxlen=5),      # Store daily bars
-            "1M": deque(maxlen=31)      # Store daily bars for monthly
+        """Initialize aggregator with time-based grouping for each timeframe"""
+        # Group 1m bars by aligned timeframe timestamp
+        # Structure: {aligned_timestamp: [OHLCV bars]}
+        self._time_groups: Dict[str, Dict[int, List[OHLCV]]] = {
+            "5m": {},
+            "15m": {},
+            "30m": {},
+            "1H": {},
+            "4H": {},
         }
+
+        # Track the most recent completed bar for each timeframe
+        self._last_completed: Dict[str, OHLCV] = {
+            "5m": None,
+            "15m": None,
+            "30m": None,
+            "1H": None,
+            "4H": None,
+        }
+
+        # Store 1m bars for daily aggregation (still use rolling buffer)
+        self._daily_buffer: deque = deque(maxlen=1440)
 
         # Store aggregated daily bars for weekly/monthly
         self._daily_bars: List[OHLCV] = []
 
-        logger.info("Initialized TimeframeAggregator with rolling buffers")
+        logger.info("Initialized TimeframeAggregator with time-based grouping")
 
     def add_1m_bar(self, bar: OHLCV) -> Dict[str, List[OHLCV]]:
         """
@@ -82,35 +92,63 @@ class TimeframeAggregator:
             bar: 1-minute OHLCV bar
 
         Returns:
-            Dictionary mapping timeframe to list of aggregated bars
+            Dictionary mapping timeframe to list of aggregated bars (0 or 1 bar each)
         """
         logger.debug(f"Adding 1m bar: {bar}")
 
-        # Add to all buffers
-        for timeframe in self._buffers:
-            if timeframe != "1W" and timeframe != "1M":
-                self._buffers[timeframe].append(bar)
-
-        # Aggregate to all timeframes
         result = {}
 
         # 1m is just the bar itself
         result["1m"] = [bar]
 
-        # Aggregate to intraday timeframes (5m, 15m, 30m, 1H, 4H)
-        for timeframe in ["5m", "15m", "30m", "1H", "4H"]:
-            if len(self._buffers[timeframe]) >= self.TIMEFRAMES[timeframe][0]:
-                # Aggregate the buffer
-                aggregated = self._aggregate_bars(
-                    list(self._buffers[timeframe]),
-                    timeframe
-                )
-                result[timeframe] = [aggregated]
+        # Add to daily buffer
+        self._daily_buffer.append(bar)
 
-        # Aggregate to daily (1D)
-        if len(self._buffers["1D"]) >= self.TIMEFRAMES["1D"][0]:
+        # Get the bar's datetime
+        bar_dt = datetime.fromtimestamp(bar.time)
+
+        # Update each intraday timeframe
+        for timeframe in ["5m", "15m", "30m", "1H", "4H"]:
+            # Calculate aligned timestamp for this bar
+            aligned_dt = self._align_to_timeframe_boundary(bar_dt, timeframe)
+            aligned_ts = int(aligned_dt.timestamp())
+
+            # Add bar to the appropriate time group
+            if aligned_ts not in self._time_groups[timeframe]:
+                self._time_groups[timeframe][aligned_ts] = []
+            self._time_groups[timeframe][aligned_ts].append(bar)
+
+            # Clean up old time groups (keep only current and previous)
+            self._cleanup_old_groups(timeframe, aligned_ts)
+
+            # Get the current time group (in-progress bar)
+            current_group = self._time_groups[timeframe][aligned_ts]
+
+            # Aggregate the current group
+            current_bar = self._aggregate_bars(current_group, timeframe)
+
+            # Check if the timeframe period has ended
+            # (i.e., we have a new aligned timestamp that's different from previous)
+            previous_aligned = self._last_completed[timeframe]
+            if previous_aligned is not None:
+                prev_dt = datetime.fromtimestamp(previous_aligned.time)
+                if aligned_dt > prev_dt:
+                    # Timeframe period ended, the previous bar is complete
+                    result[timeframe] = [current_bar]
+                    self._last_completed[timeframe] = current_bar
+                else:
+                    # Still in the same period, send update for in-progress bar
+                    result[timeframe] = [current_bar]
+                    self._last_completed[timeframe] = current_bar
+            else:
+                # First bar for this timeframe
+                result[timeframe] = [current_bar]
+                self._last_completed[timeframe] = current_bar
+
+        # Aggregate to daily (1D) - different logic, still using rolling buffer
+        if len(self._daily_buffer) >= self.TIMEFRAMES["1D"][0]:
             daily_bar = self._aggregate_bars(
-                list(self._buffers["1D"]),
+                list(self._daily_buffer),
                 "1D"
             )
             result["1D"] = [daily_bar]
@@ -120,7 +158,7 @@ class TimeframeAggregator:
 
             # Aggregate to weekly (1W) - need 5 daily bars
             if len(self._daily_bars) >= 5:
-                weekly_bars = self._daily_bars[-5:]  # Last 5 daily bars
+                weekly_bars = self._daily_bars[-5:]
                 weekly_bar = self._aggregate_bars(weekly_bars, "1W")
                 result["1W"] = [weekly_bar]
 
@@ -130,6 +168,20 @@ class TimeframeAggregator:
                 result["1M"] = [monthly_bar]
 
         return result
+
+    def _cleanup_old_groups(self, timeframe: str, current_aligned_ts: int) -> None:
+        """
+        Remove old time groups to prevent memory bloat.
+        Keeps only the current and previous time groups.
+        """
+        # Get all aligned timestamps for this timeframe
+        all_timestamps = list(self._time_groups[timeframe].keys())
+
+        # Remove timestamps that are more than 2 periods old
+        for ts in all_timestamps:
+            if ts < current_aligned_ts - (2 * self.TIMEFRAMES[timeframe][1]):
+                del self._time_groups[timeframe][ts]
+                logger.debug(f"Cleaned up old {timeframe} group: {ts}")
 
     def _aggregate_bars(self, bars: List[OHLCV], timeframe: str) -> OHLCV:
         """
@@ -145,9 +197,13 @@ class TimeframeAggregator:
         if not bars:
             raise ValueError(f"Cannot aggregate empty bar list for {timeframe}")
 
+        # Align timestamp to timeframe boundary
+        first_bar_time = datetime.fromtimestamp(bars[0].time)
+        aligned_time = self._align_to_timeframe_boundary(first_bar_time, timeframe)
+
         # Aggregate OHLCV
         aggregated = OHLCV(
-            time=bars[0].time,  # Time of first bar
+            time=int(aligned_time.timestamp()),
             open=bars[0].open,
             high=max(bar.high for bar in bars),
             low=min(bar.low for bar in bars),
@@ -157,6 +213,52 @@ class TimeframeAggregator:
 
         logger.debug(f"Aggregated {len(bars)} bars to {timeframe}: {aggregated}")
         return aggregated
+
+    def _align_to_timeframe_boundary(self, dt: datetime, timeframe: str) -> datetime:
+        """
+        Align datetime to the start of the timeframe boundary.
+
+        Examples:
+        - 1H: 2026-01-02 11:41:00 -> 2026-01-02 11:00:00
+        - 5m: 2026-01-02 11:43:00 -> 2026-01-02 11:40:00
+        - 1D: 2026-01-02 15:30:00 -> 2026-01-02 00:00:00
+
+        Args:
+            dt: Datetime to align
+            timeframe: Target timeframe
+
+        Returns:
+            Aligned datetime
+        """
+        if timeframe == "1m":
+            return dt.replace(microsecond=0)
+        elif timeframe == "5m":
+            minute = (dt.minute // 5) * 5
+            return dt.replace(minute=minute, second=0, microsecond=0)
+        elif timeframe == "15m":
+            minute = (dt.minute // 15) * 15
+            return dt.replace(minute=minute, second=0, microsecond=0)
+        elif timeframe == "30m":
+            minute = (dt.minute // 30) * 30
+            return dt.replace(minute=minute, second=0, microsecond=0)
+        elif timeframe == "1H":
+            return dt.replace(minute=0, second=0, microsecond=0)
+        elif timeframe == "4H":
+            hour = (dt.hour // 4) * 4
+            return dt.replace(hour=hour, minute=0, second=0, microsecond=0)
+        elif timeframe == "1D":
+            return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif timeframe == "1W":
+            # Monday of the week
+            days_since_monday = dt.weekday()
+            monday = dt - timedelta(days=days_since_monday)
+            return monday.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif timeframe == "1M":
+            # First day of month
+            return dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            logger.warning(f"Unknown timeframe {timeframe}, returning original time")
+            return dt
 
     def _aggregate_monthly(self, daily_bars: List[OHLCV]) -> OHLCV:
         """
@@ -214,6 +316,54 @@ class TimeframeAggregator:
         return []
 
 
+def _align_historical_to_boundary(dt: datetime, timeframe: str) -> datetime:
+    """
+    Align datetime to the start of the timeframe boundary.
+    Module-level version for historical aggregation.
+
+    Examples:
+    - 1H: 2026-01-02 11:41:00 -> 2026-01-02 11:00:00
+    - 5m: 2026-01-02 11:43:00 -> 2026-01-02 11:40:00
+    - 1D: 2026-01-02 15:30:00 -> 2026-01-02 00:00:00
+
+    Args:
+        dt: Datetime to align
+        timeframe: Target timeframe
+
+    Returns:
+        Aligned datetime
+    """
+    if timeframe == "1m":
+        return dt.replace(microsecond=0)
+    elif timeframe == "5m":
+        minute = (dt.minute // 5) * 5
+        return dt.replace(minute=minute, second=0, microsecond=0)
+    elif timeframe == "15m":
+        minute = (dt.minute // 15) * 15
+        return dt.replace(minute=minute, second=0, microsecond=0)
+    elif timeframe == "30m":
+        minute = (dt.minute // 30) * 30
+        return dt.replace(minute=minute, second=0, microsecond=0)
+    elif timeframe == "1H":
+        return dt.replace(minute=0, second=0, microsecond=0)
+    elif timeframe == "4H":
+        hour = (dt.hour // 4) * 4
+        return dt.replace(hour=hour, minute=0, second=0, microsecond=0)
+    elif timeframe == "1D":
+        return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif timeframe == "1W":
+        # Monday of the week
+        days_since_monday = dt.weekday()
+        monday = dt - timedelta(days=days_since_monday)
+        return monday.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif timeframe == "1M":
+        # First day of month
+        return dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        logger.warning(f"Unknown timeframe {timeframe}, returning original time")
+        return dt
+
+
 def aggregate_historical_1m_to_timeframe(
     bars_1m: List[OHLCV],
     target_timeframe: str
@@ -246,25 +396,36 @@ def aggregate_historical_1m_to_timeframe(
         daily_bars = _aggregate_to_daily(bars_1m)
         return _aggregate_to_weekly(daily_bars)
 
-    # Standard intraday aggregation
+    # Standard intraday aggregation using time-based grouping
+    # Group bars by aligned timeframe timestamp
+    time_groups = {}
+
+    for bar in bars_1m:
+        bar_dt = datetime.fromtimestamp(bar.time)
+        aligned_dt = _align_historical_to_boundary(bar_dt, target_timeframe)
+        aligned_ts = int(aligned_dt.timestamp())
+
+        if aligned_ts not in time_groups:
+            time_groups[aligned_ts] = []
+        time_groups[aligned_ts].append(bar)
+
+    # Aggregate each time group
     aggregated_bars = []
+    for aligned_ts in sorted(time_groups.keys()):
+        group = time_groups[aligned_ts]
 
-    for i in range(0, len(bars_1m), bars_needed):
-        chunk = bars_1m[i:i + bars_needed]
+        # Create aggregated bar
+        bar = OHLCV(
+            time=aligned_ts,
+            open=group[0].open,
+            high=max(b.high for b in group),
+            low=min(b.low for b in group),
+            close=group[-1].close,
+            volume=sum(b.volume for b in group)
+        )
+        aggregated_bars.append(bar)
 
-        if len(chunk) == bars_needed:
-            # Aggregate this chunk
-            bar = OHLCV(
-                time=chunk[0].time,
-                open=chunk[0].open,
-                high=max(b.high for b in chunk),
-                low=min(b.low for b in chunk),
-                close=chunk[-1].close,
-                volume=sum(b.volume for b in chunk)
-            )
-            aggregated_bars.append(bar)
-
-    logger.info(f"Aggregated {len(bars_1m)} 1m bars to {len(aggregated_bars)} {target_timeframe} bars")
+    logger.info(f"Aggregated {len(bars_1m)} 1m bars to {len(aggregated_bars)} {target_timeframe} bars using time-based grouping")
     return aggregated_bars
 
 

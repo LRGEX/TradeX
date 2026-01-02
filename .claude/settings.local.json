@@ -30,7 +30,8 @@
       "Bash(git push:*)",
       "mcp__zread__get_repo_structure",
       "Bash(git ls-tree:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(git rm:*)"
     ]
   }
 }
